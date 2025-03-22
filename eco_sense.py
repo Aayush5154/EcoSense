@@ -1,61 +1,100 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-from datetime import datetime, timedelta
-from PIL import Image
+import sqlite3
 import time
+from datetime import datetime
 
-# ✅ Ensure set_page_config is at the top
+# Set Streamlit Page Config
 st.set_page_config(page_title="EcoSense - Waste Reduction Platform", page_icon="🌱", layout="wide")
 
-# Simulated user database
-users = {"admin": "password123", "user1": "eco123"}
-
-# Apply custom styles
+# Custom CSS for Background and Styling
+# Custom CSS for Background and Styling
+# Custom CSS for Background and Styling
+# Custom CSS for Styling
 st.markdown(
     """
     <style>
-        body {
-            background-color: #f0f7f4;
-            font-family: 'Arial', sans-serif;
-        }
-        .stApp {
-            background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
-            padding: 2rem;
-        }
-        .title {
-            text-align: center;
-            color: #1b5e20;
-            font-size: 2.5rem;
-            margin-bottom: 2rem;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
-        }
-        .stButton>button {
-            background: linear-gradient(45deg, #43a047 30%, #4caf50 90%);
-            color: white;
-            border-radius: 8px;
-            padding: 0.5rem 2rem;
-            border: none;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            transition: all 0.3s ease;
-        }
-        .stButton>button:hover {
-            background: linear-gradient(45deg, #388e3c 30%, #43a047 90%);
-            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-            transform: translateY(-1px);
-        }
+    /* Set Background Color */
+    [data-testid="stAppViewContainer"] {
+        background-color: #E8F5E9; /* Light Green */
+    }
+
+    /* Sidebar Styling */
+    [data-testid="stSidebar"] {
+        background-color: #2E7D32 !important;  /* Dark Green */
+        color: white !important;
+    }
+
+    /* Sidebar Text Styling */
+    [data-testid="stSidebar"] * {
+        color: white !important;
+    }
+
+    /* Buttons Styling */
+    div.stButton > button {
+        border-radius: 10px;
+        background-color: #4CAF50; /* Green */
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        font-size: 16px;
+        transition: 0.3s;
+    }
+    div.stButton > button:hover {
+        background-color: #388E3C;
+    }
+
+    /* Headers */
+    .st-emotion-cache-10trblm {
+        color: #1B5E20; /* Dark Green */
+    }
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
-# Session State for login
+
+# Database Setup
+conn = sqlite3.connect("ecosense.db", check_same_thread=False)
+cursor = conn.cursor()
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT UNIQUE,
+    password TEXT
+)
+""")
+
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS waste_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT,
+    material TEXT,
+    quantity REAL,
+    date TEXT,
+    method TEXT
+)
+""")
+conn.commit()
+
+# Session State for Login
 if "authenticated" not in st.session_state:
     st.session_state["authenticated"] = False
+    st.session_state["username"] = ""
 
+# Authentication Function
 def authenticate(username, password):
-    return users.get(username) == password
+    cursor.execute("SELECT * FROM users WHERE username=? AND password=?", (username, password))
+    return cursor.fetchone() is not None
+
+def register(username, password):
+    try:
+        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+        conn.commit()
+        return True
+    except:
+        return False
 
 def main():
     if not st.session_state["authenticated"]:
@@ -63,7 +102,7 @@ def main():
         return
     
     st.sidebar.title("🌿 EcoSense Menu")
-    page = st.sidebar.radio("", ["🏠 Home", "📝 Log Waste", "📊 Insights", "🚀 Action Plan", "🏆 Leaderboard", "💬 Forum", "ℹ️ Project Info"])
+    page = st.sidebar.radio("", ["🏠 Home", "📝 Log Waste", "📊 Insights", "🚀 Action Plan", "🏆 Leaderboard", "💬 Forum", "ℹ Project Info"])
     
     if page == "🏠 Home":
         home_screen()
@@ -84,18 +123,29 @@ def login():
     st.title("🔐 Login to EcoSense")
     username = st.text_input("👤 Username")
     password = st.text_input("🔑 Password", type="password")
-    if st.button("Login", help="Click to login"):
+    
+    if st.button("Login"):
         if authenticate(username, password):
             st.session_state["authenticated"] = True
+            st.session_state["username"] = username
             st.rerun()
         else:
             st.error("❌ Invalid credentials. Please try again.")
+    
+    st.subheader("New User? Register Below")
+    new_user = st.text_input("Choose Username")
+    new_pass = st.text_input("Choose Password", type="password")
+    if st.button("Register"):
+        if register(new_user, new_pass):
+            st.success("✅ Registration Successful! You can now log in.")
+        else:
+            st.error("⚠ Username already exists!")
 
 def home_screen():
     st.header("🌍 Welcome to EcoSense!")
     st.subheader("Your personalized waste tracking dashboard")
-    
     col1, col2, col3 = st.columns(3)
+    
     with col1:
         st.metric(label="♻ Waste Reduction", value="28%", delta="5%")
     with col2:
@@ -105,67 +155,43 @@ def home_screen():
 
 def log_waste():
     st.header("📝 Log Your Waste")
-    
-    material_type = st.selectbox("Select Material Type", ["Food", "Plastic", "Paper", "Glass", "Metal", "Electronics", "Other"])
+    material = st.selectbox("Material Type", ["Food", "Plastic", "Paper", "Glass", "Metal", "Electronics", "Other"])
     quantity = st.number_input("Amount (kg)", min_value=0.1, max_value=50.0, value=0.5, step=0.1)
     entry_date = st.date_input("Entry Date", datetime.now())
     handling = st.selectbox("Handling Method", ["Recycled", "Composted", "Landfill", "Donated", "Repurposed"])
     
     if st.button("💾 Save Entry"):
-        st.success(f"✅ Logged {quantity} kg of {material_type}")
-    
-    st.subheader("🤖 AI Waste Recognition")
-    file_upload = st.file_uploader("📸 Upload an image", type=["jpg", "png", "jpeg"])
-    if file_upload is not None:
-        st.image(file_upload, caption="Uploaded image", width=250)
-        time.sleep(2)
-        st.success("🤖 AI Recognized: Plastic Bottle")
-        st.info("💡 Recommendation: Recycle it in a plastic bin")
+        cursor.execute("INSERT INTO waste_log (username, material, quantity, date, method) VALUES (?, ?, ?, ?, ?)",
+                       (st.session_state["username"], material, quantity, entry_date.strftime('%Y-%m-%d'), handling))
+        conn.commit()
+        st.success(f"✅ Logged {quantity} kg of {material}")
 
 def waste_insights():
     st.header("📊 Waste Insights")
-    
-    span = st.selectbox("Select Time Period", ["7 Days", "30 Days", "90 Days", "1 Year"])
-    days = int(span.split()[0])
-    
-    dates = pd.date_range(end=datetime.now(), periods=days)
-    waste_data = pd.DataFrame({
-        "Date": dates,
-        "Organic": np.random.normal(1.8, 0.6, days),
-        "Plastic": np.random.normal(0.9, 0.4, days),
-        "Paper": np.random.normal(0.7, 0.3, days)
-    })
-    waste_data.set_index("Date", inplace=True)
-    
-    st.line_chart(waste_data)
-    st.download_button("⬇ Download Data", waste_data.to_csv(), "waste_data.csv", "text/csv")
+    df = pd.read_sql_query("SELECT * FROM waste_log", conn)
+    st.dataframe(df)
+    st.download_button("⬇ Download Data", df.to_csv(), "waste_data.csv", "text/csv")
 
 def action_plan():
     st.header("🚀 Personalized Action Plan")
     st.write("🌿 Reduce plastic waste by 35% in 90 days!")
     st.progress(0.58)
-    st.write("💡 Try using reusable alternatives like cloth bags and metal straws.")
 
 def leaderboard():
     st.header("🏆 Leaderboard - Top Waste Reducers")
-    data = {"User": ["Aayush", "Saksham", "Arthav", "Aaryan"], "Waste Reduced (kg)": [85, 74, 66, 58]}
-    st.table(pd.DataFrame(data))
+    df = pd.read_sql_query("SELECT username, SUM(quantity) as total FROM waste_log GROUP BY username ORDER BY total DESC", conn)
+    st.table(df)
 
 def community_forum():
     st.header("💬 Community Forum - Share Your Tips")
     comment = st.text_area("📝 Share a sustainability tip:")
     if st.button("📢 Post"):
         st.success("✅ Your tip has been posted!")
-    
-    st.subheader("📌 Recent Tips")
-    st.write("- Alice: Use bamboo toothbrushes instead of plastic ones!")
-    st.write("- Bob: Carry a reusable bottle everywhere!")
-    st.write("- Charlie: Try composting at home!")
 
 def project_info():
-    st.header("ℹ️ About EcoSense")
+    st.header("ℹ About EcoSense")
     st.write("EcoSense is a waste reduction platform for a greener planet.")
-    st.markdown("**GitHub Repository:** [github.com/Aayush5154/EcoSense](https://github.com/Aayush5154/EcoSense)")
+    st.markdown("*GitHub Repository:* [github.com/Aayush5154/EcoSense](https://github.com/Aayush5154/EcoSense)")
 
 if __name__ == "__main__":
     main()
